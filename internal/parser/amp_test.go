@@ -147,6 +147,7 @@ func TestSerializeAmpResult(t *testing.T) {
 		{name: "mixed list string number", input: `["a",1]`, want: `["a",1]`},
 		{name: "mixed list string bool string", input: `["a",false,"b"]`, want: `["a",false,"b"]`},
 		{name: "screenshot list objects", input: `[{"type":"image","data":"..."}]`, want: "[binary content]"},
+		{name: "list of non-image objects", input: `[{"file":"foo.go","line":42},{"file":"bar.go","line":7}]`, want: `[{"file":"foo.go","line":42},{"file":"bar.go","line":7}]`},
 		{name: "list numbers", input: `[1,2,3]`, want: `[1,2,3]`},
 		{name: "empty array", input: `[]`, want: ""},
 		{name: "null", input: `null`, want: ""},
@@ -250,9 +251,29 @@ func TestExtractAmpToolResults(t *testing.T) {
 			wantN: 0,
 		},
 		{
-			name:  "amp empty array result",
-			input: `[{"type":"tool_result","toolUseID":"tu1","run":{"status":"done","result":[]}}]`,
-			wantN: 0,
+			// Empty array result: run.result existed so the block is preserved
+			// even though serialized text is empty, avoiding a "pending" tool call.
+			name:   "amp empty array result",
+			input:  `[{"type":"tool_result","toolUseID":"tu1","run":{"status":"done","result":[]}}]`,
+			wantN:  1,
+			wantID: "tu1",
+			want:   "",
+		},
+		{
+			// Empty string result: same as above — result existed, preserve it.
+			name:   "amp empty string result",
+			input:  `[{"type":"tool_result","toolUseID":"tu1","run":{"status":"done","result":""}}]`,
+			wantN:  1,
+			wantID: "tu1",
+			want:   "",
+		},
+		{
+			// Array of non-image objects should round-trip as raw JSON, not "[binary content]".
+			name:   "amp list of objects result",
+			input:  `[{"type":"tool_result","toolUseID":"tu1","run":{"status":"done","result":[{"file":"foo.go","line":42}]}}]`,
+			wantN:  1,
+			wantID: "tu1",
+			want:   `[{"file":"foo.go","line":42}]`,
 		},
 		{
 			name:  "non tool_result block",

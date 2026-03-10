@@ -238,7 +238,13 @@ func serializeAmpResult(result gjson.Result) string {
 		}
 
 		if items[0].IsObject() {
-			return "[binary content]"
+			// Only treat as binary/image if the first element looks like an
+			// image block. Generic arrays of objects (search results, file
+			// listings, etc.) should round-trip as raw JSON instead.
+			if items[0].Get("type").Str == "image" {
+				return "[binary content]"
+			}
+			return result.Raw
 		}
 
 		return result.Raw
@@ -269,9 +275,11 @@ func extractAmpToolResults(content gjson.Result) []ParsedToolResult {
 		}
 
 		var text string
+		hasResult := false
 		result := block.Get("run.result")
 		if result.Exists() && result.Type != gjson.Null {
 			text = serializeAmpResult(result)
+			hasResult = true
 		} else {
 			switch block.Get("run.status").Str {
 			case "error":
@@ -283,7 +291,10 @@ func extractAmpToolResults(content gjson.Result) []ParsedToolResult {
 				text = "[cancelled]"
 			}
 		}
-		if text == "" {
+		// Skip blocks with no result and no error/cancelled status.
+		// Preserve blocks where run.result existed but serialized to empty
+		// (e.g. empty string, empty array) so the tool call is not left pending.
+		if text == "" && !hasResult {
 			continue
 		}
 
