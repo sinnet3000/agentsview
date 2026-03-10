@@ -196,19 +196,13 @@ func serializeAmpResult(result gjson.Result) string {
 		// Priority order is intentional: Bash commonly uses "output",
 		// Read uses "content", and Edit uses "diff". If shapes overlap,
 		// prefer the most common display fields.
-		if output := result.Get("output"); output.Exists() {
-			if s := serializeAmpResult(output); s != "" {
-				return s
-			}
-		}
-		if content := result.Get("content"); content.Exists() {
-			if s := serializeAmpResult(content); s != "" {
-				return s
-			}
-		}
-		if diff := result.Get("diff"); diff.Exists() {
-			if s := serializeAmpResult(diff); s != "" {
-				return s
+		knownFieldSeen := false
+		for _, key := range []string{"output", "content", "diff"} {
+			if field := result.Get(key); field.Exists() {
+				knownFieldSeen = true
+				if s := serializeAmpResult(field); s != "" {
+					return s
+				}
 			}
 		}
 
@@ -218,6 +212,12 @@ func serializeAmpResult(result gjson.Result) string {
 				return "success"
 			}
 			return "failed"
+		}
+
+		// If a known display field was present but empty, return empty
+		// rather than falling back to noisy raw JSON metadata.
+		if knownFieldSeen {
+			return ""
 		}
 
 		return result.Raw

@@ -154,6 +154,7 @@ func TestSerializeAmpResult(t *testing.T) {
 		{name: "null output falls through to content", input: `{"output":null,"content":"fallback"}`, want: "fallback"},
 		{name: "null output falls through to diff", input: `{"output":null,"diff":"--- a"}`, want: "--- a"},
 		{name: "empty output falls through to content", input: `{"output":"","content":"fallback"}`, want: "fallback"},
+		{name: "empty output no fallback returns empty", input: `{"output":"","exitCode":0}`, want: ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
