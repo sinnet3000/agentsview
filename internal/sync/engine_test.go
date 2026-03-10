@@ -372,6 +372,40 @@ func TestPairToolResultsContent(t *testing.T) {
 				}},
 			},
 		},
+		{
+			// Mirrors ContentRaw produced by parser.extractAmpToolResults
+			// (JSON-marshaled plain-text output).
+			name: "amp: marshaled tool result text decodes into ResultContent",
+			msgs: []db.Message{
+				{ToolCalls: []db.ToolCall{
+					{ToolUseID: "t1", ToolName: "Bash", Category: "Bash"},
+				}},
+				{ToolResults: []db.ToolResult{
+					{
+						ToolUseID:     "t1",
+						ContentLength: 22,
+						ContentRaw:    "\"line 1\\nline \\\"2\\\" output\"",
+					},
+				}},
+			},
+			blocked: nil,
+			want: []db.Message{
+				{ToolCalls: []db.ToolCall{
+					{
+						ToolUseID: "t1", ToolName: "Bash", Category: "Bash",
+						ResultContentLength: 22,
+						ResultContent:       "line 1\nline \"2\" output",
+					},
+				}},
+				{ToolResults: []db.ToolResult{
+					{
+						ToolUseID:     "t1",
+						ContentLength: 22,
+						ContentRaw:    "\"line 1\\nline \\\"2\\\" output\"",
+					},
+				}},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
