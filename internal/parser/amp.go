@@ -197,13 +197,19 @@ func serializeAmpResult(result gjson.Result) string {
 		// Read uses "content", and Edit uses "diff". If shapes overlap,
 		// prefer the most common display fields.
 		if output := result.Get("output"); output.Exists() {
-			return serializeAmpResult(output)
+			if s := serializeAmpResult(output); s != "" {
+				return s
+			}
 		}
 		if content := result.Get("content"); content.Exists() {
-			return serializeAmpResult(content)
+			if s := serializeAmpResult(content); s != "" {
+				return s
+			}
 		}
 		if diff := result.Get("diff"); diff.Exists() {
-			return serializeAmpResult(diff)
+			if s := serializeAmpResult(diff); s != "" {
+				return s
+			}
 		}
 
 		success := result.Get("success")
@@ -264,7 +270,7 @@ func extractAmpToolResults(content gjson.Result) []ParsedToolResult {
 			continue
 		}
 
-		if block.Get("tool_use_id").Exists() {
+		if block.Get("tool_use_id").Str != "" {
 			// Canonical schema is handled by shared extractor.
 			continue
 		}

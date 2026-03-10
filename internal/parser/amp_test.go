@@ -151,6 +151,9 @@ func TestSerializeAmpResult(t *testing.T) {
 		{name: "list numbers", input: `[1,2,3]`, want: `[1,2,3]`},
 		{name: "empty array", input: `[]`, want: ""},
 		{name: "null", input: `null`, want: ""},
+		{name: "null output falls through to content", input: `{"output":null,"content":"fallback"}`, want: "fallback"},
+		{name: "null output falls through to diff", input: `{"output":null,"diff":"--- a"}`, want: "--- a"},
+		{name: "empty output falls through to content", input: `{"output":"","content":"fallback"}`, want: "fallback"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -274,6 +277,20 @@ func TestExtractAmpToolResults(t *testing.T) {
 			wantN:  1,
 			wantID: "tu1",
 			want:   `[{"file":"foo.go","line":42}]`,
+		},
+		{
+			name:   "empty tool_use_id falls through to toolUseID",
+			input:  `[{"type":"tool_result","tool_use_id":"","toolUseID":"tu1","run":{"status":"done","result":"text"}}]`,
+			wantN:  1,
+			wantID: "tu1",
+			want:   "text",
+		},
+		{
+			name:   "null tool_use_id falls through to toolUseID",
+			input:  `[{"type":"tool_result","tool_use_id":null,"toolUseID":"tu1","run":{"status":"done","result":"ok"}}]`,
+			wantN:  1,
+			wantID: "tu1",
+			want:   "ok",
 		},
 		{
 			name:  "non tool_result block",
