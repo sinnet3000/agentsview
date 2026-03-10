@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func runAmpParserTest(
@@ -121,6 +122,177 @@ func TestParseAmpSession_ToolUseAndThinking(t *testing.T) {
 
 	// EndTime absent (empty traces) → zero.
 	assertZeroTimestamp(t, sess.EndedAt, "EndedAt")
+}
+
+func TestSerializeAmpResult(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "plain string", input: `"some text"`, want: "some text"},
+		{name: "empty string", input: `""`, want: ""},
+		{name: "bash dict", input: `{"output":"hello\n","exitCode":0}`, want: "hello\n"},
+		{name: "read dict", input: `{"absolutePath":"/a/b","content":"file data"}`, want: "file data"},
+		{name: "edit dict", input: `{"diff":"--- a\n+++ b"}`, want: "--- a\n+++ b"},
+		{name: "success true", input: `{"success":true}`, want: "success"},
+		{name: "success false", input: `{"success":false}`, want: "failed"},
+		{name: "unknown dict fallback", input: `{"foo":"bar"}`, want: `{"foo":"bar"}`},
+		{name: "grep list strings", input: `["/a:1:x","/b:2:y"]`, want: "/a:1:x\n/b:2:y"},
+		{name: "screenshot list objects", input: `[{"type":"image","data":"..."}]`, want: "[binary content]"},
+		{name: "empty array", input: `[]`, want: ""},
+		{name: "null", input: `null`, want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := gjson.Parse(`{"result":` + tt.input + `}`).Get("result")
+			assert.Equal(t, tt.want, serializeAmpResult(result))
+		})
+	}
+
+	t.Run("not exists", func(t *testing.T) {
+		assert.Equal(t, "", serializeAmpResult(gjson.Result{}))
+	})
+}
+
+func TestExtractAmpToolResults(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		wantN  int
+		wantID string
+		want   string
+	}{
+		{
+			name:  "canonical tool_use_id skipped",
+			input: `[{"type":"tool_result","tool_use_id":"tu1","content":"x"}]`,
+			wantN: 0,
+		},
+		{
+			name:   "amp string result",
+			input:  `[{"type":"tool_result","toolUseID":"tu1","run":{"status":"done","result":"text"}}]`,
+			wantN:  1,
+			wantID: "tu1",
+			want:   "text",
+		},
+		{
+			name:   "amp dict result",
+			input:  `[{"type":"tool_result","toolUseID":"tu1","run":{"status":"done","result":{"output":"ok","exitCode":0}}}]`,
+			wantN:  1,
+			wantID: "tu1",
+			want:   "ok",
+		},
+		{
+			name:   "amp error result",
+			input:  `[{"type":"tool_result","toolUseID":"tu1","run":{"status":"error","error":{"message":"fail"}}}]`,
+			wantN:  1,
+			wantID: "tu1",
+			want:   "fail",
+		},
+		{
+			name:   "amp unknown error",
+			input:  `[{"type":"tool_result","toolUseID":"tu1","run":{"status":"error"}}]`,
+			wantN:  1,
+			wantID: "tu1",
+			want:   "[unknown error]",
+		},
+		{
+			name:   "amp cancelled",
+			input:  `[{"type":"tool_result","toolUseID":"tu1","run":{"status":"cancelled"}}]`,
+			wantN:  1,
+			wantID: "tu1",
+			want:   "[cancelled]",
+		},
+		{
+			name:  "amp null result done",
+			input: `[{"type":"tool_result","toolUseID":"tu1","run":{"status":"done","result":null}}]`,
+			wantN: 0,
+		},
+		{
+			name:  "amp missing result and status",
+			input: `[{"type":"tool_result","toolUseID":"tu1","run":{"foo":"bar"}}]`,
+			wantN: 0,
+		},
+		{
+			name:  "amp empty array result",
+			input: `[{"type":"tool_result","toolUseID":"tu1","run":{"status":"done","result":[]}}]`,
+			wantN: 0,
+		},
+		{
+			name:  "non tool_result block",
+			input: `[{"type":"text","text":"hello"}]`,
+			wantN: 0,
+		},
+		{
+			name:   "mixed canonical and amp",
+			input:  `[{"type":"tool_result","tool_use_id":"tu0","content":"x"},{"type":"tool_result","toolUseID":"tu1","run":{"status":"done","result":"text"}}]`,
+			wantN:  1,
+			wantID: "tu1",
+			want:   "text",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractAmpToolResults(gjson.Parse(tt.input))
+			assert.Equal(t, tt.wantN, len(got))
+			if tt.wantN == 0 {
+				return
+			}
+
+			assert.Equal(t, tt.wantID, got[0].ToolUseID)
+			assert.Equal(t, tt.want, DecodeContent(got[0].ContentRaw))
+			assert.Equal(t, len(tt.want), got[0].ContentLength)
+		})
+	}
+}
+
+func TestParseAmpSession_AmpToolResultSchema(t *testing.T) {
+	content := `{
+		"v": 1,
+		"id": "T-amp-tool-result-schema",
+		"created": 1704067200000,
+		"messages": [
+			{"role":"assistant","content":[
+				{"type":"text","text":"running librarian"},
+				{"type":"tool_use","id":"toolu1","name":"librarian","input":{"query":"x"}}
+			]},
+			{"role":"user","content":[
+				{"type":"tool_result","toolUseID":"toolu1","run":{"status":"done","result":"Here is a complete breakdown"}}
+			]}
+		]
+	}`
+
+	sess, msgs, err := runAmpParserTest(t, content)
+	require.NoError(t, err)
+	require.NotNil(t, sess)
+	require.Len(t, msgs, 2)
+	require.Len(t, msgs[1].ToolResults, 1)
+	assert.Equal(t, "toolu1", msgs[1].ToolResults[0].ToolUseID)
+	assert.Equal(t, "Here is a complete breakdown", DecodeContent(msgs[1].ToolResults[0].ContentRaw))
+}
+
+func TestParseAmpSession_AmpToolResultDict(t *testing.T) {
+	content := `{
+		"v": 1,
+		"id": "T-amp-tool-result-dict",
+		"created": 1704067200000,
+		"messages": [
+			{"role":"assistant","content":[
+				{"type":"text","text":"running bash"},
+				{"type":"tool_use","id":"toolu1","name":"Bash","input":{"command":"echo ok"}}
+			]},
+			{"role":"user","content":[
+				{"type":"tool_result","toolUseID":"toolu1","run":{"status":"done","result":{"output":"cmd output","exitCode":0}}}
+			]}
+		]
+	}`
+
+	_, msgs, err := runAmpParserTest(t, content)
+	require.NoError(t, err)
+	require.Len(t, msgs, 2)
+	require.Len(t, msgs[1].ToolResults, 1)
+	assert.Equal(t, "cmd output", DecodeContent(msgs[1].ToolResults[0].ContentRaw))
 }
 
 func TestParseAmpSession_NoEnv(t *testing.T) {
