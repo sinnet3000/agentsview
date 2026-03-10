@@ -224,10 +224,13 @@ func serializeAmpResult(result gjson.Result) string {
 		}
 
 		if items[0].Type == gjson.String {
+			// Only apply "string list" formatting when all items are strings.
+			// Mixed-type arrays should round-trip via Raw rather than silently
+			// dropping or mangling non-string elements.
 			lines := make([]string, 0, len(items))
 			for _, item := range items {
 				if item.Type != gjson.String {
-					continue
+					return result.Raw
 				}
 				lines = append(lines, item.Str)
 			}

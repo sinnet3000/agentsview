@@ -144,6 +144,8 @@ func TestSerializeAmpResult(t *testing.T) {
 		{name: "success false", input: `{"success":false}`, want: "failed"},
 		{name: "unknown dict fallback", input: `{"foo":"bar"}`, want: `{"foo":"bar"}`},
 		{name: "grep list strings", input: `["/a:1:x","/b:2:y"]`, want: "/a:1:x\n/b:2:y"},
+		{name: "mixed list string number", input: `["a",1]`, want: `["a",1]`},
+		{name: "mixed list string bool string", input: `["a",false,"b"]`, want: `["a",false,"b"]`},
 		{name: "screenshot list objects", input: `[{"type":"image","data":"..."}]`, want: "[binary content]"},
 		{name: "list numbers", input: `[1,2,3]`, want: `[1,2,3]`},
 		{name: "empty array", input: `[]`, want: ""},
