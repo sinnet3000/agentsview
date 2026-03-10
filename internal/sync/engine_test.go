@@ -303,6 +303,9 @@ func TestPairToolResults(t *testing.T) {
 }
 
 func TestPairToolResultsContent(t *testing.T) {
+	ampToolResultText := "line 1\nline \"2\" output"
+	ampToolResultRaw := "\"line 1\\nline \\\"2\\\" output\""
+
 	tests := []struct {
 		name    string
 		msgs    []db.Message
@@ -383,8 +386,8 @@ func TestPairToolResultsContent(t *testing.T) {
 				{ToolResults: []db.ToolResult{
 					{
 						ToolUseID:     "t1",
-						ContentLength: 22,
-						ContentRaw:    "\"line 1\\nline \\\"2\\\" output\"",
+						ContentLength: len(ampToolResultText),
+						ContentRaw:    ampToolResultRaw,
 					},
 				}},
 			},
@@ -393,15 +396,15 @@ func TestPairToolResultsContent(t *testing.T) {
 				{ToolCalls: []db.ToolCall{
 					{
 						ToolUseID: "t1", ToolName: "Bash", Category: "Bash",
-						ResultContentLength: 22,
-						ResultContent:       "line 1\nline \"2\" output",
+						ResultContentLength: len(ampToolResultText),
+						ResultContent:       ampToolResultText,
 					},
 				}},
 				{ToolResults: []db.ToolResult{
 					{
 						ToolUseID:     "t1",
-						ContentLength: 22,
-						ContentRaw:    "\"line 1\\nline \\\"2\\\" output\"",
+						ContentLength: len(ampToolResultText),
+						ContentRaw:    ampToolResultRaw,
 					},
 				}},
 			},

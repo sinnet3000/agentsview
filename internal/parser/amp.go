@@ -197,13 +197,13 @@ func serializeAmpResult(result gjson.Result) string {
 		// Read uses "content", and Edit uses "diff". If shapes overlap,
 		// prefer the most common display fields.
 		if output := result.Get("output"); output.Exists() {
-			return output.Str
+			return serializeAmpResult(output)
 		}
 		if content := result.Get("content"); content.Exists() {
-			return content.Str
+			return serializeAmpResult(content)
 		}
 		if diff := result.Get("diff"); diff.Exists() {
-			return diff.Str
+			return serializeAmpResult(diff)
 		}
 
 		success := result.Get("success")
@@ -237,9 +237,11 @@ func serializeAmpResult(result gjson.Result) string {
 		if items[0].IsObject() {
 			return "[binary content]"
 		}
+
+		return result.Raw
 	}
 
-	return ""
+	return result.Raw
 }
 
 func extractAmpToolResults(content gjson.Result) []ParsedToolResult {
