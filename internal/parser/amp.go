@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -98,6 +99,7 @@ func ParseAmpSession(
 
 		content, hasThinking, hasToolUse, tcs, trs :=
 			ExtractTextContent(msg.Get("content"))
+		trs = append(trs, extractAmpToolResults(msg.Get("content"))...)
 		if strings.TrimSpace(content) == "" && len(trs) == 0 {
 			return true
 		}
@@ -179,4 +181,118 @@ func ampThreadIDFromPath(path string) string {
 		return ""
 	}
 	return stem
+}
+
+func serializeAmpResult(result gjson.Result) string {
+	if !result.Exists() || result.Type == gjson.Null {
+		return ""
+	}
+
+	if result.Type == gjson.String {
+		return result.Str
+	}
+
+	if result.IsObject() {
+		// Priority order is intentional: Bash commonly uses "output",
+		// Read uses "content", and Edit uses "diff". If shapes overlap,
+		// prefer the most common display fields.
+		if output := result.Get("output"); output.Exists() {
+			return output.Str
+		}
+		if content := result.Get("content"); content.Exists() {
+			return content.Str
+		}
+		if diff := result.Get("diff"); diff.Exists() {
+			return diff.Str
+		}
+
+		success := result.Get("success")
+		if success.Exists() {
+			if success.Bool() {
+				return "success"
+			}
+			return "failed"
+		}
+
+		return result.Raw
+	}
+
+	if result.IsArray() {
+		items := result.Array()
+		if len(items) == 0 {
+			return ""
+		}
+
+		if items[0].Type == gjson.String {
+			lines := make([]string, 0, len(items))
+			for _, item := range items {
+				if item.Type != gjson.String {
+					continue
+				}
+				lines = append(lines, item.Str)
+			}
+			return strings.Join(lines, "\n")
+		}
+
+		if items[0].IsObject() {
+			return "[binary content]"
+		}
+	}
+
+	return ""
+}
+
+func extractAmpToolResults(content gjson.Result) []ParsedToolResult {
+	if !content.IsArray() {
+		return nil
+	}
+
+	var results []ParsedToolResult
+	for _, block := range content.Array() {
+		if block.Get("type").Str != "tool_result" {
+			continue
+		}
+
+		if block.Get("tool_use_id").Exists() {
+			// Canonical schema is handled by shared extractor.
+			continue
+		}
+
+		toolUseID := block.Get("toolUseID").Str
+		if toolUseID == "" {
+			continue
+		}
+
+		var text string
+		result := block.Get("run.result")
+		if result.Exists() && result.Type != gjson.Null {
+			text = serializeAmpResult(result)
+		} else {
+			switch block.Get("run.status").Str {
+			case "error":
+				text = block.Get("run.error.message").Str
+				if text == "" {
+					text = "[unknown error]"
+				}
+			case "cancelled":
+				text = "[cancelled]"
+			}
+		}
+		if text == "" {
+			continue
+		}
+
+		quoted, err := json.Marshal(text)
+		if err != nil {
+			continue
+		}
+
+		results = append(results, ParsedToolResult{
+			ToolUseID:     toolUseID,
+			ContentRaw:    string(quoted),
+			ContentLength: len(text),
+		})
+	}
+
+	return results
 }
